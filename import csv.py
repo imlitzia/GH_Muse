@@ -2,6 +2,28 @@ import csv
 import numpy as np
 import matplotlib.pyplot as plt
 
+def remove_outliers(data, threshold=1.5):
+    """Remove outliers using the IQR method"""
+    q1 = np.percentile(data, 25)
+    q3 = np.percentile(data, 75)
+    iqr = q3 - q1
+    lower_bound = q1 - threshold * iqr
+    upper_bound = q3 + threshold * iqr
+    return np.clip(data, lower_bound, upper_bound)
+
+def moving_average(data, window_size=5):
+    """Apply moving average smoothing while maintaining the array length"""
+    window = np.ones(window_size) / window_size
+    # Use 'same' mode to maintain the array length
+    smoothed = np.convolve(data, window, mode='same')
+    
+    # Handle edge effects by using original data for the edges
+    half_window = window_size // 2
+    smoothed[:half_window] = data[:half_window]
+    smoothed[-half_window:] = data[-half_window:]
+    
+    return smoothed
+
 # Load data from the CSV file
 def load_data(filename):
     with open(filename, 'r') as file:
@@ -49,6 +71,17 @@ def load_data(filename):
     if not data:
         raise ValueError("No valid data found in the CSV file")
     
+    # Convert to numpy arrays
+    data = np.array(data)
+    ratios_af7 = np.array(ratios_af7)
+    ratios_af8 = np.array(ratios_af8)
+    
+    # Remove outliers from all signals
+    for i in range(data.shape[1]):
+        data[:, i] = remove_outliers(data[:, i])
+    ratios_af7 = remove_outliers(ratios_af7)
+    ratios_af8 = remove_outliers(ratios_af8)
+    
     # Calculate averages of the ratios
     avg_ratio_af7 = np.mean(ratios_af7)
     avg_ratio_af8 = np.mean(ratios_af8)
@@ -56,28 +89,51 @@ def load_data(filename):
     print(f"Average Beta/Alpha Ratio for AF7: {avg_ratio_af7:.3f}")
     print(f"Average Beta/Alpha Ratio for AF8: {avg_ratio_af8:.3f}")
     
-    return np.array(data), np.array(ratios_af7), np.array(ratios_af8)
+    return data, ratios_af7, ratios_af8
 
 # Visualize brainwave data
-def visualize_data(data, ratios_af7, ratios_af8, frequency_labels):
-    time = np.arange(len(ratios_af7))  # Time axis
+def visualize_data(data, ratios_af7, ratios_af8, frequency_labels, window_size=20):
+    # Apply moving average smoothing
+    smoothed_data = np.zeros_like(data)
+    for i in range(data.shape[1]):
+        smoothed_data[:, i] = moving_average(data[:, i], window_size)
+    
+    smoothed_ratios_af7 = moving_average(ratios_af7, window_size)
+    smoothed_ratios_af8 = moving_average(ratios_af8, window_size)
+    
+    # Create time axis (now we can use the same time axis for both raw and smoothed)
+    time = np.arange(len(ratios_af7))
 
     # Create figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
-    fig.suptitle('Brainwave Analysis')
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(15, 10))
+    fig.suptitle('Brainwave Analysis (Raw vs Smoothed)')
 
     # Plot Alpha and Beta values
-    ax1.plot(time, data[:, 0], label='Alpha AF7', alpha=0.7)
-    ax1.plot(time, data[:, 1], label='Beta AF7', alpha=0.7)
-    ax1.plot(time, data[:, 2], label='Alpha AF8', alpha=0.7)
-    ax1.plot(time, data[:, 3], label='Beta AF8', alpha=0.7)
+    # Raw data (lighter color)
+    ax1.plot(time, data[:, 0], label='Alpha AF7 (Raw)', alpha=0.3)
+    ax1.plot(time, data[:, 1], label='Beta AF7 (Raw)', alpha=0.3)
+    ax1.plot(time, data[:, 2], label='Alpha AF8 (Raw)', alpha=0.3)
+    ax1.plot(time, data[:, 3], label='Beta AF8 (Raw)', alpha=0.3)
+    
+    # Smoothed data (darker color)
+    ax1.plot(time, smoothed_data[:, 0], label='Alpha AF7 (Smoothed)', linewidth=2)
+    ax1.plot(time, smoothed_data[:, 1], label='Beta AF7 (Smoothed)', linewidth=2)
+    ax1.plot(time, smoothed_data[:, 2], label='Alpha AF8 (Smoothed)', linewidth=2)
+    ax1.plot(time, smoothed_data[:, 3], label='Beta AF8 (Smoothed)', linewidth=2)
+    
     ax1.set_ylabel('Amplitude')
     ax1.legend()
     ax1.set_title('Alpha and Beta Values')
 
     # Plot Beta/Alpha ratios
-    ax2.plot(time, ratios_af7, label='AF7 Beta/Alpha', alpha=0.7)
-    ax2.plot(time, ratios_af8, label='AF8 Beta/Alpha', alpha=0.7)
+    # Raw data (lighter color)
+    ax2.plot(time, ratios_af7, label='AF7 Beta/Alpha (Raw)', alpha=0.3)
+    ax2.plot(time, ratios_af8, label='AF8 Beta/Alpha (Raw)', alpha=0.3)
+    
+    # Smoothed data (darker color)
+    ax2.plot(time, smoothed_ratios_af7, label='AF7 Beta/Alpha (Smoothed)', linewidth=2)
+    ax2.plot(time, smoothed_ratios_af8, label='AF8 Beta/Alpha (Smoothed)', linewidth=2)
+    
     ax2.set_ylabel('Beta/Alpha Ratio')
     ax2.set_xlabel('Time')
     ax2.legend()
